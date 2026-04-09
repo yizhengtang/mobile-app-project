@@ -20,6 +20,7 @@ import CreateTripScreen from './src/screens/CreateTripScreen';
 import TripDetailScreen from './src/screens/TripDetailScreen';
 import ChatScreen       from './src/screens/ChatScreen';
 import ProfileScreen    from './src/screens/ProfileScreen';
+import MapScreen        from './src/screens/MapScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab   = createBottomTabNavigator();
@@ -99,6 +100,7 @@ function RootNavigator() {
         <Stack.Screen name="MainTabs"   component={MainTabs} />
         <Stack.Screen name="TripDetail" component={TripDetailScreen} />
         <Stack.Screen name="Chat"       component={ChatScreen} />
+        <Stack.Screen name="Map"        component={MapScreen} />
       </Stack.Navigator>
     </TripProvider>
   );

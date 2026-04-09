@@ -11,9 +11,12 @@ function WeatherIcon({ pop }) {
   return '☀️';
 }
 
-export default function DayCard({ day }) {
+export default function DayCard({ day, onMapPress }) {
   const [collapsed, setCollapsed] = useState(false);
   const isRainyDay = day.precipitationProbability > 0.6;
+  const hasMappableStops = (day.stops || []).some(
+    (s) => s.coordinates?.lat && s.coordinates?.lng
+  );
 
   return (
     <View style={styles.wrapper}>
@@ -34,6 +37,16 @@ export default function DayCard({ day }) {
           <View style={styles.budgetPill}>
             <Text style={styles.budgetText}>${day.budgetBreakdown?.total ?? 0}</Text>
           </View>
+          {hasMappableStops && (
+            <TouchableOpacity
+              style={styles.mapBtn}
+              onPress={(e) => { e.stopPropagation?.(); onMapPress?.(); }}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="map-outline" size={16} color={COLORS.primary} />
+            </TouchableOpacity>
+          )}
           <Ionicons
             name={collapsed ? 'chevron-down' : 'chevron-up'}
             size={16}
@@ -131,6 +144,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: SIZES.radiusFull,
+  },
+  mapBtn: {
+    width: 28, height: 28, borderRadius: 8,
+    backgroundColor: COLORS.primaryBg,
+    alignItems: 'center', justifyContent: 'center',
   },
   budgetText: { fontSize: 12, color: COLORS.accent, fontWeight: '600' },
   rainBanner: {
