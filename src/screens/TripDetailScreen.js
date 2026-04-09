@@ -257,7 +257,11 @@ export default function TripDetailScreen({ route, navigation }) {
         {trip.status === 'ready' && displayedDays.length > 0 && (
           <View style={styles.daysContainer}>
             {displayedDays.map((day) => (
-              <DayCard key={day.date || day.dayNumber} day={day} />
+              <DayCard
+                key={day.date || day.dayNumber}
+                day={day}
+                onMapPress={() => navigation.navigate('Map', { day, tripName: trip.name })}
+              />
             ))}
           </View>
         )}
