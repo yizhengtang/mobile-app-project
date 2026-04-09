@@ -1,25 +1,20 @@
 // src/screens/ChatScreen.js
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet,
-  SafeAreaView, KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTrips } from '../context/TripContext';
+import { tripsAPI } from '../services/api';
 import { COLORS, SIZES } from '../theme';
 
-const MOCK_SUGGESTIONS = [
+const SUGGESTIONS = [
   'Move the art gallery to Day 2',
   'Add a 2-hour lunch break on Day 1',
-  'Swap outdoor stops for Day 3',
-  'Find a restaurant near the museum',
-];
-
-const MOCK_AI_REPLIES = [
-  "Done! I've moved the art gallery to Day 2 at 14:00 — the schedule still works within your budget.",
-  "Added a 2-hour lunch break on Day 1 starting at 13:00. Afternoon stops shift by 30 minutes.",
-  "Swapped Day 3's outdoor stops for indoor alternatives — forecast looks rainy. Outdoor stops moved to Day 4.",
-  "Found 3 great options near the museum. Added Ristorante Giusti — only a 4-min walk away.",
+  'Swap outdoor stops for indoor on rainy days',
+  'Find a restaurant near the last stop',
 ];
 
 function MessageBubble({ message }) {
@@ -56,43 +51,103 @@ function TypingIndicator() {
   );
 }
 
-function now() {
+function formatTime(dateStr) {
+  return new Date(dateStr).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' });
+}
+
+function nowTime() {
   return new Date().toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' });
 }
 
 export default function ChatScreen({ route, navigation }) {
   const { tripId } = route.params;
-  const { getTripById } = useTrips();
+  const { getTripById, updateTripPlan } = useTrips();
   const trip = getTripById(tripId);
 
-  const [messages, setMessages] = useState([
-    {
-      id: '0',
-      role: 'assistant',
-      content: `Hi! I'm your Wayfarer AI. Ask me to change anything about your "${trip?.name}" itinerary — move stops, swap days, find restaurants, and more.`,
-      time: now(),
-    },
-  ]);
-  const [input, setInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
+  const [messages, setMessages]   = useState([]);
+  const [input, setInput]         = useState('');
+  const [isTyping, setIsTyping]   = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const listRef = useRef(null);
-  const replyIndex = useRef(0);
 
-  function sendMessage(text) {
+  // Load chat history on mount
+  useEffect(() => {
+    async function loadHistory() {
+      try {
+        const { messages: history } = await tripsAPI.getChatHistory(tripId);
+
+        const formatted = history.map((m) => ({
+          id:      m._id,
+          role:    m.role,
+          content: m.content,
+          time:    formatTime(m.createdAt),
+        }));
+
+        // Prepend the static greeting
+        const greeting = {
+          id:      'greeting',
+          role:    'assistant',
+          content: `Hi! I'm your Wayfarer AI. Ask me to change anything about your "${trip?.name}" itinerary — move stops, swap days, find restaurants, and more.`,
+          time:    nowTime(),
+        };
+
+        setMessages([greeting, ...formatted]);
+      } catch {
+        // If history fails, just show the greeting
+        setMessages([{
+          id:      'greeting',
+          role:    'assistant',
+          content: `Hi! I'm your Wayfarer AI. Ask me to change anything about your "${trip?.name}" itinerary.`,
+          time:    nowTime(),
+        }]);
+      } finally {
+        setHistoryLoading(false);
+      }
+    }
+    loadHistory();
+  }, [tripId]);
+
+  async function sendMessage(text) {
     const trimmed = (text || input).trim();
-    if (!trimmed) return;
-    const userMsg = { id: Date.now().toString(), role: 'user', content: trimmed, time: now() };
+    if (!trimmed || isTyping) return;
+
+    const userMsg = {
+      id:      Date.now().toString(),
+      role:    'user',
+      content: trimmed,
+      time:    nowTime(),
+    };
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
     setIsTyping(true);
-    setTimeout(() => {
-      const reply = MOCK_AI_REPLIES[replyIndex.current % MOCK_AI_REPLIES.length];
-      replyIndex.current += 1;
-      const aiMsg = { id: (Date.now() + 1).toString(), role: 'assistant', content: reply, time: now() };
-      setIsTyping(false);
+
+    try {
+      const { reply, plan } = await tripsAPI.sendChat(tripId, trimmed);
+
+      const aiMsg = {
+        id:      (Date.now() + 1).toString(),
+        role:    'assistant',
+        content: reply,
+        time:    nowTime(),
+      };
       setMessages((prev) => [...prev, aiMsg]);
-    }, 1500);
+
+      // Update the trip in context so TripDetail reflects the new plan
+      if (plan) updateTripPlan(tripId, plan);
+    } catch (err) {
+      const errMsg = {
+        id:      (Date.now() + 1).toString(),
+        role:    'assistant',
+        content: `Sorry, something went wrong: ${err.message}`,
+        time:    nowTime(),
+      };
+      setMessages((prev) => [...prev, errMsg]);
+    } finally {
+      setIsTyping(false);
+    }
   }
+
+  const showSuggestions = !historyLoading && messages.length <= 1;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -116,24 +171,35 @@ export default function ChatScreen({ route, navigation }) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
       >
-        <FlatList
-          ref={listRef}
-          data={messages}
-          keyExtractor={(m) => m.id}
-          renderItem={({ item }) => <MessageBubble message={item} />}
-          ListFooterComponent={isTyping ? <TypingIndicator /> : null}
-          contentContainerStyle={styles.messageList}
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-          showsVerticalScrollIndicator={false}
-        />
+        {historyLoading ? (
+          <View style={styles.loadingHistory}>
+            <ActivityIndicator color={COLORS.primary} />
+          </View>
+        ) : (
+          <FlatList
+            ref={listRef}
+            data={messages}
+            keyExtractor={(m) => m.id}
+            renderItem={({ item }) => <MessageBubble message={item} />}
+            ListFooterComponent={isTyping ? <TypingIndicator /> : null}
+            contentContainerStyle={styles.messageList}
+            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
 
-        {/* Quick suggestions */}
-        {messages.length <= 1 && (
+        {/* Quick suggestions — only shown before first user message */}
+        {showSuggestions && (
           <View style={styles.suggestions}>
             <Text style={styles.suggestionsLabel}>Try asking…</Text>
             <View style={styles.suggestionChips}>
-              {MOCK_SUGGESTIONS.map((s, i) => (
-                <TouchableOpacity key={i} style={styles.suggestionChip} onPress={() => sendMessage(s)}>
+              {SUGGESTIONS.map((s, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={styles.suggestionChip}
+                  onPress={() => sendMessage(s)}
+                  disabled={isTyping}
+                >
                   <Text style={styles.suggestionChipText}>{s}</Text>
                 </TouchableOpacity>
               ))}
@@ -157,7 +223,10 @@ export default function ChatScreen({ route, navigation }) {
             onPress={() => sendMessage()}
             disabled={!input.trim() || isTyping}
           >
-            <Ionicons name="send" size={17} color={COLORS.white} />
+            {isTyping
+              ? <ActivityIndicator size="small" color={COLORS.white} />
+              : <Ionicons name="send" size={17} color={COLORS.white} />
+            }
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -169,39 +238,29 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.background },
 
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SIZES.padding,
-    paddingVertical: 12,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: SIZES.padding, paddingVertical: 12,
     backgroundColor: COLORS.card,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
   },
   backBtn: {
     width: 32, height: 32, borderRadius: 10,
     backgroundColor: COLORS.background,
     alignItems: 'center', justifyContent: 'center',
   },
-  headerCenter: { flexDirection: 'row', alignItems: 'center' },
+  headerCenter:   { flexDirection: 'row', alignItems: 'center' },
   aiDot: {
     width: 10, height: 10, borderRadius: 5,
-    backgroundColor: COLORS.accent,
-    marginRight: 10,
+    backgroundColor: COLORS.accent, marginRight: 10,
   },
   headerTitle:    { fontSize: 16, fontWeight: '800', color: COLORS.text },
   headerSubtitle: { fontSize: 12, color: COLORS.textSecondary },
 
-  messageList: { padding: SIZES.padding, paddingBottom: 8 },
+  loadingHistory: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  messageList:    { padding: SIZES.padding, paddingBottom: 8 },
 
-  bubbleWrapper: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginBottom: 12,
-  },
+  bubbleWrapper:     { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 12 },
   bubbleWrapperUser: { justifyContent: 'flex-end' },
   bubbleWrapperAI:   { justifyContent: 'flex-start' },
 
@@ -231,9 +290,9 @@ const styles = StyleSheet.create({
   typingBubble: { paddingVertical: 14 },
   typingDots:   { fontSize: 18, color: COLORS.textMuted, letterSpacing: 4 },
 
-  suggestions:       { paddingHorizontal: SIZES.padding, paddingBottom: 8 },
-  suggestionsLabel:  { fontSize: 12, color: COLORS.textSecondary, fontWeight: '700', marginBottom: 8 },
-  suggestionChips:   { flexDirection: 'row', flexWrap: 'wrap' },
+  suggestions:      { paddingHorizontal: SIZES.padding, paddingBottom: 8 },
+  suggestionsLabel: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '700', marginBottom: 8 },
+  suggestionChips:  { flexDirection: 'row', flexWrap: 'wrap' },
   suggestionChip: {
     backgroundColor: COLORS.card,
     borderWidth: 1.5, borderColor: COLORS.primary + '60',
@@ -244,29 +303,20 @@ const styles = StyleSheet.create({
   suggestionChipText: { fontSize: 12, color: COLORS.primary, fontWeight: '600' },
 
   inputBar: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingHorizontal: SIZES.padding,
-    paddingVertical: 10,
+    flexDirection: 'row', alignItems: 'flex-end',
+    paddingHorizontal: SIZES.padding, paddingVertical: 10,
     backgroundColor: COLORS.card,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowColor: '#000', shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05, shadowRadius: 8, elevation: 8,
   },
   textInput: {
     flex: 1,
     backgroundColor: COLORS.background,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
+    borderWidth: 1.5, borderColor: COLORS.border,
     borderRadius: SIZES.radius,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: COLORS.text,
-    maxHeight: 100,
-    marginRight: 10,
+    paddingHorizontal: 14, paddingVertical: 10,
+    fontSize: 14, color: COLORS.text,
+    maxHeight: 100, marginRight: 10,
   },
   sendBtn: {
     width: 42, height: 42, borderRadius: 14,

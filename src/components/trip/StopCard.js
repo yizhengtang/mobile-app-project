@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES, CATEGORY_META, TRANSPORT_ICONS } from '../../theme';
 
 function CrowdBadge({ level }) {
+  if (!level) return null;
   const colors = {
     low: { bg: COLORS.accentLight, text: COLORS.accent },
     moderate: { bg: COLORS.warningLight, text: COLORS.warning },
