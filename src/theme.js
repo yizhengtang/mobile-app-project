@@ -91,7 +91,9 @@ export function countryFlag(country) {
 }
 
 export function formatDate(dateStr) {
-  const [year, month, day] = dateStr.split('-').map(Number);
+  if (!dateStr) return '—';
+  // Handle both 'YYYY-MM-DD' and 'YYYY-MM-DDTHH:mm:ss.sssZ' from the backend
+  const [year, month, day] = dateStr.slice(0, 10).split('-').map(Number);
   const d = new Date(year, month - 1, day);
   return d.toLocaleDateString('en-IE', { day: 'numeric', month: 'short' });
 }
@@ -101,8 +103,9 @@ export function formatDateRange(start, end) {
 }
 
 export function tripDuration(start, end) {
-  const s = new Date(start);
-  const e = new Date(end);
+  if (!start || !end) return '—';
+  const s = new Date(start.slice(0, 10));
+  const e = new Date(end.slice(0, 10));
   const diff = Math.round((e - s) / (1000 * 60 * 60 * 24));
   return `${diff} day${diff !== 1 ? 's' : ''}`;
 }

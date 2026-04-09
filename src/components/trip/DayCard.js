@@ -32,7 +32,7 @@ export default function DayCard({ day }) {
             <WeatherIcon pop={day.precipitationProbability} /> {day.weatherSummary}
           </Text>
           <View style={styles.budgetPill}>
-            <Text style={styles.budgetText}>${day.budgetBreakdown.total}</Text>
+            <Text style={styles.budgetText}>${day.budgetBreakdown?.total ?? 0}</Text>
           </View>
           <Ionicons
             name={collapsed ? 'chevron-down' : 'chevron-up'}
@@ -73,16 +73,16 @@ export default function DayCard({ day }) {
       )}
 
       {/* Budget breakdown (collapsed shows summary) */}
-      {!collapsed && (
+      {!collapsed && day.budgetBreakdown && (
         <View style={styles.budgetRow}>
-          <BudgetItem icon="ticket-outline" label="Entry" value={day.budgetBreakdown.entranceFees} />
-          <BudgetItem icon="train-outline" label="Transport" value={day.budgetBreakdown.transport} />
-          <BudgetItem icon="restaurant-outline" label="Meals" value={day.budgetBreakdown.meals} />
-          <BudgetItem icon="card-outline" label="Other" value={day.budgetBreakdown.discretionary} />
+          <BudgetItem icon="ticket-outline"    label="Entry"     value={day.budgetBreakdown.entranceFees  ?? 0} />
+          <BudgetItem icon="train-outline"     label="Transport" value={day.budgetBreakdown.transport     ?? 0} />
+          <BudgetItem icon="restaurant-outline" label="Meals"   value={day.budgetBreakdown.meals         ?? 0} />
+          <BudgetItem icon="card-outline"      label="Other"     value={day.budgetBreakdown.discretionary ?? 0} />
         </View>
       )}
 
-      {day.budgetBreakdown.transitPassRecommended && !collapsed && (
+      {day.budgetBreakdown?.transitPassRecommended && !collapsed && (
         <View style={styles.transitPassTip}>
           <Ionicons name="information-circle-outline" size={14} color={COLORS.primary} />
           <Text style={styles.transitPassText}>

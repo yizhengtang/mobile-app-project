@@ -1,9 +1,10 @@
 // src/screens/HomeScreen.js
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  SafeAreaView, TextInput,
+  TextInput, ActivityIndicator, RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTrips } from '../context/TripContext';
 import { COLORS, SIZES, TRIP_THEMES, formatDateRange, tripDuration, countryFlag } from '../theme';
@@ -94,9 +95,20 @@ function FilterChip({ label, active, onPress }) {
 const FILTERS = ['All', '🇯🇵 Japan', '🇫🇷 France', '🇪🇸 Spain'];
 
 export default function HomeScreen({ navigation }) {
-  const { getTrips } = useTrips();
+  const { getTrips, loadTrips } = useTrips();
   const [activeFilter, setActiveFilter] = useState('All');
-  const [search, setSearch] = useState('');
+  const [search, setSearch]             = useState('');
+  const [loading, setLoading]           = useState(true);
+  const [refreshing, setRefreshing]     = useState(false);
+
+  const fetchAll = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    try { await loadTrips(); } catch { /* silent */ }
+    finally { setLoading(false); setRefreshing(false); }
+  }, [loadTrips]);
+
+  useEffect(() => { fetchAll(); }, []);
+
   const trips = getTrips();
 
   const filtered = trips.filter((t) => {
@@ -110,9 +122,23 @@ export default function HomeScreen({ navigation }) {
   const upcoming = filtered.filter((t) => new Date(t.startDate) >= new Date());
   const past     = filtered.filter((t) => new Date(t.startDate) <  new Date());
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scroll}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchAll(true)} tintColor={COLORS.primary} />}
+      >
 
         {/* ── Header ── */}
         <View style={styles.header}>
@@ -184,9 +210,9 @@ export default function HomeScreen({ navigation }) {
             >
               {upcoming.map((trip) => (
                 <TripCard
-                  key={trip.id}
+                  key={trip._id}
                   trip={trip}
-                  onPress={() => navigation.navigate('TripDetail', { tripId: trip.id })}
+                  onPress={() => navigation.navigate('TripDetail', { tripId: trip._id })}
                 />
               ))}
             </ScrollView>
@@ -210,9 +236,9 @@ export default function HomeScreen({ navigation }) {
             >
               {past.map((trip) => (
                 <TripCard
-                  key={trip.id}
+                  key={trip._id}
                   trip={trip}
-                  onPress={() => navigation.navigate('TripDetail', { tripId: trip.id })}
+                  onPress={() => navigation.navigate('TripDetail', { tripId: trip._id })}
                 />
               ))}
             </ScrollView>

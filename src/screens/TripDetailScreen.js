@@ -1,29 +1,27 @@
 // src/screens/TripDetailScreen.js
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTrips } from '../context/TripContext';
 import { COLORS, SIZES, TRIP_THEMES, formatDateRange, tripDuration, countryFlag } from '../theme';
 import DayCard from '../components/trip/DayCard';
 
-// ── Hero illustration (full-width, no safe area at top) ───────────────────────
+const POLL_INTERVAL_MS = 4000;
+
+// ── Hero illustration ─────────────────────────────────────────────────────────
 function HeroIllustration({ trip, onBack, onFavourite }) {
   const city  = trip.destination?.city || '';
   const theme = TRIP_THEMES[city] || TRIP_THEMES.default;
 
   return (
     <View style={[styles.hero, { backgroundColor: theme.bg }]}>
-      {/* Blobs */}
       <View style={[styles.heroBlob1, { backgroundColor: theme.accentBg }]} />
       <View style={[styles.heroBlob2, { backgroundColor: theme.accentBg }]} />
-
-      {/* Main emoji */}
       <Text style={styles.heroEmoji}>{theme.emoji}</Text>
       <Text style={styles.heroScene}>{theme.scene}</Text>
-
-      {/* Overlay buttons */}
       <TouchableOpacity style={styles.heroBack} onPress={onBack}>
         <Ionicons name="chevron-back" size={20} color={COLORS.text} />
       </TouchableOpacity>
@@ -34,7 +32,7 @@ function HeroIllustration({ trip, onBack, onFavourite }) {
   );
 }
 
-// ── Quick-action button (Itinerary / Budget / Chat) ───────────────────────────
+// ── Quick-action button ───────────────────────────────────────────────────────
 function QuickAction({ icon, label, onPress, accent }) {
   return (
     <TouchableOpacity style={styles.quickAction} onPress={onPress} activeOpacity={0.8}>
@@ -48,14 +46,74 @@ function QuickAction({ icon, label, onPress, accent }) {
 
 export default function TripDetailScreen({ route, navigation }) {
   const { tripId } = route.params;
-  const { getTripById, deleteTrip } = useTrips();
-  const trip = getTripById(tripId);
-  const [selectedDay, setSelectedDay] = useState(null);
+  const { getTripById, fetchTrip, deleteTrip } = useTrips();
 
-  if (!trip) {
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState(null);
+  const [selectedDay, setSelectedDay] = useState(null);
+  const pollRef = useRef(null);
+
+  // Initial load + set up polling if still generating
+  useEffect(() => {
+    let mounted = true;
+
+    async function load() {
+      try {
+        const trip = await fetchTrip(tripId);
+        if (!mounted) return;
+
+        if (trip.status === 'generating') {
+          startPolling();
+        }
+      } catch (err) {
+        if (mounted) setError(err.message);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      mounted = false;
+      stopPolling();
+    };
+  }, [tripId]);
+
+  function startPolling() {
+    stopPolling();
+    pollRef.current = setInterval(async () => {
+      try {
+        const trip = await fetchTrip(tripId);
+        if (trip.status === 'ready' || trip.status === 'failed') {
+          stopPolling();
+        }
+      } catch {
+        stopPolling();
+      }
+    }, POLL_INTERVAL_MS);
+  }
+
+  function stopPolling() {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }
+
+  const trip = getTripById(tripId);
+
+  if (loading) {
     return (
-      <View style={styles.notFound}>
-        <Text style={styles.notFoundText}>Trip not found.</Text>
+      <View style={styles.centred}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  if (error || !trip) {
+    return (
+      <View style={styles.centred}>
+        <Text style={styles.errorText}>{error || 'Trip not found.'}</Text>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.backLink}>Go back</Text>
         </TouchableOpacity>
@@ -66,20 +124,31 @@ export default function TripDetailScreen({ route, navigation }) {
   function handleDelete() {
     Alert.alert('Delete Trip', `Delete "${trip.name}"? This cannot be undone.`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => { deleteTrip(trip.id); navigation.goBack(); } },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteTrip(trip._id);
+            navigation.goBack();
+          } catch (err) {
+            Alert.alert('Error', err.message);
+          }
+        },
+      },
     ]);
   }
 
-  const displayedDays = selectedDay !== null
-    ? trip.days.filter((d) => d.dayNumber === selectedDay)
-    : trip.days;
+  const isGenerating = trip.status === 'generating';
+  const isPending    = trip.status === 'pending';
+  const isFailed     = trip.status === 'failed';
+  const flag         = countryFlag(trip.destination?.country);
 
-  const isPending = trip.status === 'pending';
-  const flag = countryFlag(trip.destination?.country);
+  const displayedDays = selectedDay !== null
+    ? (trip.days || []).filter((d) => d.dayNumber === selectedDay)
+    : (trip.days || []);
 
   return (
     <View style={styles.container}>
-      {/* Hero — sits behind the status bar on purpose */}
       <HeroIllustration
         trip={trip}
         onBack={() => navigation.goBack()}
@@ -103,7 +172,6 @@ export default function TripDetailScreen({ route, navigation }) {
             </Text>
           </View>
 
-          {/* Meta pills */}
           <View style={styles.metaPills}>
             <View style={styles.metaPill}>
               <Ionicons name="calendar-outline" size={13} color={COLORS.primary} />
@@ -113,7 +181,7 @@ export default function TripDetailScreen({ route, navigation }) {
               <Ionicons name="time-outline" size={13} color={COLORS.primary} />
               <Text style={styles.metaPillText}>{tripDuration(trip.startDate, trip.endDate)}</Text>
             </View>
-            {trip.totalBudget && (
+            {trip.totalBudget != null && (
               <View style={styles.metaPill}>
                 <Ionicons name="wallet-outline" size={13} color={COLORS.primary} />
                 <Text style={styles.metaPillText}>${trip.totalBudget}</Text>
@@ -121,32 +189,42 @@ export default function TripDetailScreen({ route, navigation }) {
             )}
           </View>
 
-          {/* Quick actions */}
           <View style={styles.quickActions}>
-            <QuickAction icon="📅" label="Itinerary"  accent={COLORS.primary}  onPress={() => {}} />
-            <QuickAction icon="💰" label="Budget"     accent="#2DC653"          onPress={() => {}} />
-            <QuickAction icon="💬" label="Refine"     accent="#8B5CF6"
-              onPress={() => navigation.navigate('Chat', { tripId: trip.id })}
+            <QuickAction icon="📅" label="Itinerary" accent={COLORS.primary}  onPress={() => {}} />
+            <QuickAction icon="💰" label="Budget"    accent="#2DC653"          onPress={() => {}} />
+            <QuickAction icon="💬" label="Refine"    accent="#8B5CF6"
+              onPress={() => navigation.navigate('Chat', { tripId: trip._id })}
             />
-            <QuickAction icon="🗑️" label="Delete"    accent={COLORS.danger}   onPress={handleDelete} />
+            <QuickAction icon="🗑️" label="Delete"   accent={COLORS.danger}   onPress={handleDelete} />
           </View>
         </View>
 
-        {/* ── Pending banner ── */}
-        {isPending && (
+        {/* ── Generating banner ── */}
+        {(isGenerating || isPending) && (
           <View style={styles.pendingBanner}>
-            <Text style={styles.pendingEmoji}>✨</Text>
+            <ActivityIndicator color={COLORS.primary} style={{ marginRight: 12 }} />
             <View style={{ flex: 1 }}>
               <Text style={styles.pendingTitle}>Generating your itinerary…</Text>
               <Text style={styles.pendingSubtitle}>
-                The AI is building your personalised day-by-day plan.
+                Fetching live data and building your personalised plan.
               </Text>
             </View>
           </View>
         )}
 
+        {/* ── Failed banner ── */}
+        {isFailed && (
+          <View style={[styles.pendingBanner, { backgroundColor: COLORS.dangerLight }]}>
+            <Ionicons name="alert-circle-outline" size={24} color={COLORS.danger} style={{ marginRight: 12 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.pendingTitle, { color: COLORS.danger }]}>Generation failed</Text>
+              <Text style={styles.pendingSubtitle}>Please delete this trip and try again.</Text>
+            </View>
+          </View>
+        )}
+
         {/* ── Day selector ── */}
-        {!isPending && trip.days.length > 1 && (
+        {trip.status === 'ready' && (trip.days || []).length > 1 && (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -161,7 +239,7 @@ export default function TripDetailScreen({ route, navigation }) {
                 All
               </Text>
             </TouchableOpacity>
-            {trip.days.map((d) => (
+            {(trip.days || []).map((d) => (
               <TouchableOpacity
                 key={d.dayNumber}
                 style={[styles.dayPill, selectedDay === d.dayNumber && styles.dayPillActive]}
@@ -176,20 +254,20 @@ export default function TripDetailScreen({ route, navigation }) {
         )}
 
         {/* ── Day cards ── */}
-        {!isPending && trip.days.length > 0 && (
+        {trip.status === 'ready' && displayedDays.length > 0 && (
           <View style={styles.daysContainer}>
             {displayedDays.map((day) => (
-              <DayCard key={day.date} day={day} />
+              <DayCard key={day.date || day.dayNumber} day={day} />
             ))}
           </View>
         )}
 
-        {/* ── No days yet ── */}
-        {!isPending && trip.days.length === 0 && (
+        {/* ── No plan yet (ready but empty — shouldn't normally happen) ── */}
+        {trip.status === 'ready' && (trip.days || []).length === 0 && (
           <View style={styles.noDays}>
             <Text style={styles.noDaysIcon}>📋</Text>
             <Text style={styles.noDaysTitle}>No itinerary yet</Text>
-            <Text style={styles.noDaysSub}>Connect the backend to generate your AI-powered plan.</Text>
+            <Text style={styles.noDaysSub}>Try regenerating this trip.</Text>
           </View>
         )}
       </ScrollView>
@@ -200,13 +278,11 @@ export default function TripDetailScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
 
-  // Hero
-  hero: {
-    height: 260,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
+  centred: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
+  errorText: { fontSize: 16, color: COLORS.textSecondary, marginBottom: 12 },
+  backLink:  { fontSize: 15, color: COLORS.primary, fontWeight: '600' },
+
+  hero: { height: 260, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   heroBlob1: {
     position: 'absolute', width: 200, height: 200, borderRadius: 100,
     top: -60, left: -50, opacity: 0.5,
@@ -234,10 +310,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1, shadowRadius: 4, elevation: 3,
   },
 
-  // White sheet below hero
   sheet: { flex: 1 },
 
-  // Header card
   headerCard: {
     backgroundColor: COLORS.card,
     marginHorizontal: SIZES.padding,
@@ -256,7 +330,7 @@ const styles = StyleSheet.create({
   flagText:        { fontSize: 18, marginRight: 6 },
   destinationText: { fontSize: 15, color: COLORS.textSecondary },
 
-  metaPills:  { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 16 },
+  metaPills: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 16 },
   metaPill: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: COLORS.primaryBg,
@@ -266,8 +340,8 @@ const styles = StyleSheet.create({
   },
   metaPillText: { fontSize: 12, color: COLORS.primary, fontWeight: '600', marginLeft: 4 },
 
-  quickActions: { flexDirection: 'row', justifyContent: 'space-around', paddingTop: 4 },
-  quickAction:  { alignItems: 'center' },
+  quickActions:    { flexDirection: 'row', justifyContent: 'space-around', paddingTop: 4 },
+  quickAction:     { alignItems: 'center' },
   quickActionIcon: {
     width: 46, height: 46, borderRadius: 14,
     alignItems: 'center', justifyContent: 'center', marginBottom: 5,
@@ -275,18 +349,15 @@ const styles = StyleSheet.create({
   quickActionEmoji: { fontSize: 20 },
   quickActionLabel: { fontSize: 11, color: COLORS.textSecondary, fontWeight: '600' },
 
-  // Pending
   pendingBanner: {
-    flexDirection: 'row', alignItems: 'flex-start',
+    flexDirection: 'row', alignItems: 'center',
     backgroundColor: COLORS.primaryBg,
     marginHorizontal: SIZES.padding, borderRadius: SIZES.radius,
     padding: SIZES.padding, marginTop: 16,
   },
-  pendingEmoji:    { fontSize: 24, marginRight: 12 },
   pendingTitle:    { fontSize: 15, fontWeight: '700', color: COLORS.text, marginBottom: 4 },
   pendingSubtitle: { fontSize: 13, color: COLORS.textSecondary },
 
-  // Day selector
   daySelectorContent: { paddingHorizontal: SIZES.padding, alignItems: 'center' },
   dayPill: {
     paddingHorizontal: 16, paddingVertical: 7,
@@ -301,14 +372,8 @@ const styles = StyleSheet.create({
 
   daysContainer: { paddingHorizontal: SIZES.padding, paddingTop: 4 },
 
-  // No days
-  noDays:    { alignItems: 'center', padding: 48 },
+  noDays:      { alignItems: 'center', padding: 48 },
   noDaysIcon:  { fontSize: 40, marginBottom: 12 },
   noDaysTitle: { fontSize: 18, fontWeight: '800', color: COLORS.text, marginBottom: 8 },
   noDaysSub:   { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 20 },
-
-  // Not found
-  notFound:     { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  notFoundText: { fontSize: 16, color: COLORS.textSecondary },
-  backLink:     { fontSize: 15, color: COLORS.primary, fontWeight: '600', marginTop: 12 },
 });
