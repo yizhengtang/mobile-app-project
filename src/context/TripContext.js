@@ -24,6 +24,9 @@ export function TripProvider({ children }) {
     // already-fetched full versions we have in state.
     setTrips((prev) => {
       //prevmap basically converts the existing trips array into a dict keyed by _id
+      //after prev.,ap((t)...) : ["abc", { _id: "abc", name: "Paris trip", days: [...] }]
+      //after object.fromentries : convert the pairs into a dict : "abc": { _id: "abc", name: "Paris trip", days: [...] }
+      //this is because looking up a trip by _id in dict is instant, whereas looking up in an array requires looping
       const prevMap = Object.fromEntries(prev.map((t) => [t._id, t]));
       return fetched.map((t) => {
         const existing = prevMap[t._id];
