@@ -4,8 +4,8 @@ import { tripsAPI } from '../services/api';
 
 const TripContext = createContext(null);
 
-// Merge the plan's days and totalBudget into the trip object so the rest of
-// the UI can access trip.days and trip.totalBudget directly.
+//this funciton basically merges trips and plans together, in the backend mongodb
+//stores as separate documents. this helper merges them so screens can access to them
 function mergeTripAndPlan(trip, plan) {
   return {
     ...trip,
@@ -23,6 +23,7 @@ export function TripProvider({ children }) {
     // getAll returns trips without plan data; keep days/totalBudget from any
     // already-fetched full versions we have in state.
     setTrips((prev) => {
+      //prevmap basically converts the existing trips array into a dict keyed by _id
       const prevMap = Object.fromEntries(prev.map((t) => [t._id, t]));
       return fetched.map((t) => {
         const existing = prevMap[t._id];

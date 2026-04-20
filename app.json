@@ -24,6 +24,12 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": []
+    "plugins": [],
+    "extra": {
+      "eas": {
+        "projectId": "1d446b3c-b75c-47a0-aa34-6f98eb649caa"
+      }
+    },
+    "owner": "yizhengtang"
   }
 }

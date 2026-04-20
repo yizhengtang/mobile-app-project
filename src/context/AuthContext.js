@@ -1,11 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authAPI, saveToken, removeToken, getToken } from '../services/api';
+import usePushToken from '../hooks/usePushToken';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser]       = useState(null);
   const [loading, setLoading] = useState(true); // true while restoring session on startup
+
+  usePushToken(user);
 
   // On mount: check if a stored token is still valid
   useEffect(() => {
