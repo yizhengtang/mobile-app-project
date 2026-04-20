@@ -18,12 +18,16 @@ export async function removeToken() {
 async function request(method, path, body) {
   const token = await getToken();
 
+  //creates the header object with one entry in it. it tells the backend the data being sent is json format.
   const headers = { 'Content-Type': 'application/json' };
+  //this statement only adds the auth header if a token exists, so if the user is not logged in, or no token in
+  //async storage, this will be skipped.
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const res = await fetch(`${API_BASE_URL}${path}`, {
     method,
     headers,
+    //if body is passed, convert the JS obj to a json string before sneding
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
@@ -72,4 +76,10 @@ export const tripsAPI = {
 
   sendChat: (id, message) =>
     request('POST', `/api/trips/${id}/chat`, { message }),
+};
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+export const notificationsAPI = {
+  savePushToken: (pushToken) =>
+    request('PATCH', '/api/auth/pushtoken', { pushToken }),
 };
