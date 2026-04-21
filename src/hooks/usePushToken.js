@@ -20,6 +20,16 @@ export default function usePushToken(user) {
   }, [user]);
 }
 
+export async function disablePushToken() {
+  try {
+    await notificationsAPI.savePushToken(null);
+  } catch (err) {
+    console.warn('[PushToken] Failed to disable:', err.message);
+  }
+}
+
+export { registerPushToken };
+
 async function registerPushToken() {
   const { status: existing } = await Notifications.getPermissionsAsync();
   let finalStatus = existing;

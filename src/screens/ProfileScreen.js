@@ -83,21 +83,21 @@ export default function ProfileScreen() {
           <StatCard icon="📍" label="Stops"        value={totalStops} />
         </View>
 
-        {/* ── Preferences ── */}
-        <Text style={styles.sectionTitle}>Preferences</Text>
-        <View style={styles.settingsCard}>
-          <SettingRow icon="walk-outline"         label="Default Transport"   value="Walk + Transit" />
-          <SettingRow icon="speedometer-outline"  label="Default Pace"        value="Moderate" />
-          <SettingRow icon="wallet-outline"       label="Default Budget"      value="$150 / day" />
-          <SettingRow icon="partly-sunny-outline" label="Weather Sensitivity" value="Medium" />
-        </View>
-
         {/* ── App ── */}
         <Text style={styles.sectionTitle}>App</Text>
         <View style={styles.settingsCard}>
           <SettingRow icon="notifications-outline"      label="Push Notifications" value="On" />
-          <SettingRow icon="moon-outline"               label="Dark Mode"          value="Off" />
-          <SettingRow icon="information-circle-outline" label="About Wayfarer" />
+          <SettingRow
+            icon="information-circle-outline"
+            label="About Wayfarer"
+            onPress={() =>
+              Alert.alert(
+                'About Wayfarer',
+                'Wayfarer is an AI-powered travel planner that builds personalised day-by-day itineraries based on your destination, pace, budget, and transport preferences.\n\nPowered by OpenAI, Google Places, and live weather data.\n\nVersion 1.0.0',
+                [{ text: 'Close', style: 'cancel' }]
+              )
+            }
+          />
         </View>
 
         {/* ── Account ── */}
