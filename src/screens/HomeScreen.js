@@ -6,8 +6,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTrips } from '../context/TripContext';
+import { registerPushToken, disablePushToken } from '../hooks/usePushToken';
 import { COLORS, SIZES, TRIP_THEMES, formatDateRange, tripDuration, countryFlag } from '../theme';
+
+const NOTIFICATIONS_KEY = 'wayfarer_notifications_enabled';
 
 // ── Illustrated card top area ─────────────────────────────────────────────────
 function TripIllustration({ trip }) {
@@ -78,28 +82,30 @@ function TripCard({ trip, onPress }) {
   );
 }
 
-// ── Filter chip ───────────────────────────────────────────────────────────────
-function FilterChip({ label, active, onPress }) {
-  return (
-    <TouchableOpacity
-      style={[styles.chip, active && styles.chipActive]}
-      onPress={onPress}
-      activeOpacity={0.8}
-    >
-      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
 // ── Main screen ───────────────────────────────────────────────────────────────
-const FILTERS = ['All', '🇯🇵 Japan', '🇫🇷 France', '🇪🇸 Spain'];
-
 export default function HomeScreen({ navigation }) {
   const { getTrips, loadTrips } = useTrips();
-  const [activeFilter, setActiveFilter] = useState('All');
-  const [search, setSearch]             = useState('');
-  const [loading, setLoading]           = useState(true);
-  const [refreshing, setRefreshing]     = useState(false);
+  const [search, setSearch]                   = useState('');
+  const [loading, setLoading]                 = useState(true);
+  const [refreshing, setRefreshing]           = useState(false);
+  const [notificationsOn, setNotificationsOn] = useState(true);
+
+  useEffect(() => {
+    AsyncStorage.getItem(NOTIFICATIONS_KEY).then((val) => {
+      if (val !== null) setNotificationsOn(val === 'true');
+    });
+  }, []);
+
+  const toggleNotifications = useCallback(async () => {
+    const next = !notificationsOn;
+    setNotificationsOn(next);
+    await AsyncStorage.setItem(NOTIFICATIONS_KEY, String(next));
+    if (next) {
+      await registerPushToken();
+    } else {
+      await disablePushToken();
+    }
+  }, [notificationsOn]);
 
   const fetchAll = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -111,13 +117,10 @@ export default function HomeScreen({ navigation }) {
 
   const trips = getTrips();
 
-  const filtered = trips.filter((t) => {
-    const matchesSearch = t.name.toLowerCase().includes(search.toLowerCase()) ||
-      t.destination.city.toLowerCase().includes(search.toLowerCase());
-    const matchesFilter = activeFilter === 'All' ||
-      activeFilter.includes(t.destination.country);
-    return matchesSearch && matchesFilter;
-  });
+  const filtered = trips.filter((t) =>
+    t.name.toLowerCase().includes(search.toLowerCase()) ||
+    t.destination.city.toLowerCase().includes(search.toLowerCase())
+  );
 
   const upcoming = filtered.filter((t) => new Date(t.startDate) >= new Date());
   const past     = filtered.filter((t) => new Date(t.startDate) <  new Date());
@@ -142,20 +145,18 @@ export default function HomeScreen({ navigation }) {
 
         {/* ── Header ── */}
         <View style={styles.header}>
-          <View>
-            <Text style={styles.locationLabel}>Location</Text>
-            <View style={styles.locationRow}>
-              <Text style={styles.locationCity}>Wayfarer</Text>
-              <Ionicons name="chevron-down" size={16} color={COLORS.text} />
-            </View>
-          </View>
+          <Text style={styles.locationCity}>Wayfarer</Text>
           <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.iconBtn}>
-              <Ionicons name="notifications-outline" size={20} color={COLORS.text} />
+            <TouchableOpacity style={styles.iconBtn} onPress={toggleNotifications}>
+              <Ionicons
+                name={notificationsOn ? 'notifications-outline' : 'notifications-off-outline'}
+                size={20}
+                color={notificationsOn ? COLORS.text : COLORS.textMuted}
+              />
             </TouchableOpacity>
-            <View style={styles.avatar}>
+            <TouchableOpacity style={styles.avatar} onPress={() => navigation.navigate('Profile')}>
               <Text style={styles.avatarEmoji}>👤</Text>
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -175,23 +176,6 @@ export default function HomeScreen({ navigation }) {
             <Ionicons name="options-outline" size={18} color={COLORS.white} />
           </TouchableOpacity>
         </View>
-
-        {/* ── Filter chips ── */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.chipsScroll}
-          contentContainerStyle={styles.chipsContent}
-        >
-          {FILTERS.map((f) => (
-            <FilterChip
-              key={f}
-              label={f}
-              active={activeFilter === f}
-              onPress={() => setActiveFilter(f)}
-            />
-          ))}
-        </ScrollView>
 
         {/* ── Upcoming trips ── */}
         {upcoming.length > 0 && (
